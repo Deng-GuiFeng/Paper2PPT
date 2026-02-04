@@ -92,7 +92,7 @@ description: "为学术论文生成5分钟文献汇报PPT内容（2-3页）。�
 
 ```markdown
 # [论文完整标题]
-*[来源信息，如：ICML 2023]*
+*[经过检索的精准论文来源（期刊/会议），如：ICML 2023, Nature Communications 2026, IEEE Journal of ...]*
 
 ---
 
