@@ -6,17 +6,21 @@
 ## Slide 1
 
 ▶ **1. Problem & Motivation**
+
 ▢ 1.1 Limitations of VLMs for OCR
   - Standard VLMs use indiscriminate token prediction without reading direction
   - High computational cost for practical text recognition tasks
+
 ▢ 1.2 Key Challenge
   - Need for **directional visual feature propagation** to guide text decoding
   - Alignment between visual tokens and text tokens should follow reading order (LTR/RTL)
 
 ▶ **2. Visual Causal Flow (VCF)**
+
 ▢ 2.1 Core Innovation
   - Novel **uni-directional attention** mechanism: visual tokens attend to text tokens sequentially
   - Establishes directional information flow aligned with reading direction
+  
 ▢ 2.2 Architecture Components
   - **Multiscale visual encoder**: Extracts features at multiple scales
   - **Cross-modal decoder**: Implements visual causal flow with directional attention
