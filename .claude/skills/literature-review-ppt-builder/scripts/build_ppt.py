@@ -825,7 +825,7 @@ def create_presentation(
     
     # 保存文件
     prs.save(output_path)
-    print(f"✅ PPT 生成成功: {output_path}")
+    print(f"[OK] PPT 生成成功: {output_path}")
     print(f"   总页数: {len(data.slides)}")
 
 
@@ -856,13 +856,13 @@ def main():
         sys.exit(1)
     
     # 读取内容
-    print(f"📖 读取内容文件: {content_file}")
+    print(f"[*] 读取内容文件: {content_file}")
     with open(content_file, "r", encoding="utf-8") as f:
         content = f.read()
     
     # 解析
     data = parse_markdown(content)
-    print(f"📊 解析结果:")
+    print(f"[*] 解析结果:")
     print(f"   标题: {data.title}")
     print(f"   来源: {data.source}")
     print(f"   幻灯片数: {len(data.slides)}")
@@ -870,7 +870,7 @@ def main():
         print(f"   Slide {i+1}: {len(slide.bullets)} 个要点, {len(slide.figures)} 张配图")
     
     # 生成 PPT
-    print(f"🔨 生成 PPT...")
+    print(f"[*] 生成 PPT...")
     create_presentation(data, figures_dir, template_file, output_file)
 
 
