@@ -1,17 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-PDF Figure/Table Extraction Tool v2.0
+PDF Figure/Table Extraction Tool v3.0
 
-Uses Qwen3-VL model to locate figures and tables in academic PDFs and extract them precisely.
+Uses Qwen3.5-plus model to locate figures and tables in academic PDFs and extract them precisely.
 Supports multi-round quality assessment and coordinate refinement.
 
 Features:
 1. Convert PDF pages to high-resolution images
-2. Use Qwen3-VL model to locate bounding boxes
-3. Multi-round quality assessment with coordinate refinement
-4. Support both complete figures and sub-figures (e.g., Figure 1(a))
-5. Optional inclusion of extra elements (caption, legend, notes)
+2. Fast text-based page detection: O(n) pre-scan to locate candidate pages
+3. Use Qwen VL model to locate bounding boxes (only on candidate pages)
+4. Multi-round quality assessment with coordinate refinement
+5. Support both complete figures and sub-figures (e.g., Figure 1(a))
+6. Optional inclusion of extra elements (caption, legend, notes)
+
+Performance:
+- Single extraction: O(n) text scan + O(rounds) AI calls (was O(n × rounds))
+- Batch extraction: O(n) text scan once + O(k × rounds) AI calls (was O(n × k × rounds))
 
 Usage:
     python extract_figures.py <pdf_path> <figure_name> [options]
@@ -60,7 +65,7 @@ except ImportError as e:
 # API credentials from environment variables
 API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 BASE_URL = os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-MODEL = os.environ.get("QWEN_VL_MODEL", "qwen3-vl-plus")
+MODEL = os.environ.get("QWEN_VL_MODEL", "qwen3.5-plus")
 
 if not API_KEY:
     print("Error: DASHSCOPE_API_KEY environment variable is not set.")
@@ -127,6 +132,101 @@ def is_subfigure(figure_name: str) -> bool:
     """Check if this is a sub-figure (e.g., Figure 1a)"""
     pattern = r'(Figure|Table|Fig\.?)\s*\d+\s*[\(\[]?[a-zA-Z][\)\]]?'
     return bool(re.match(pattern, figure_name, re.IGNORECASE))
+
+
+# ============== Page Detection (Text-Based, O(n)) ==============
+
+def build_figure_search_variants(figure_name: str) -> List[str]:
+    """Build text search variants for a figure name to handle different notations.
+
+    E.g., "Figure 1(a)" -> ["Figure 1(a)", "Figure 1", "Fig. 1(a)", "Fig. 1", ...]
+    """
+    normalized = normalize_figure_name(figure_name)
+    variants: set = {normalized}
+
+    # For sub-figures, also search for the parent figure (e.g. "Figure 1" from "Figure 1(a)")
+    sub_match = re.match(
+        r'^((?:Figure|Table|Fig\.?)\s*\d+)\s*[\(\[]\s*[a-zA-Z]\s*[\)\]]',
+        normalized, re.IGNORECASE
+    )
+    if sub_match:
+        variants.add(sub_match.group(1))
+
+    # Add Figure/Fig./Fig alternates for every existing variant
+    for v in list(variants):
+        if re.match(r'(?i)^figure\s', v):
+            suffix = re.sub(r'(?i)^figure\s+', '', v)
+            variants.add(f'Fig. {suffix}')
+            variants.add(f'Fig {suffix}')
+        elif re.match(r'(?i)^fig\.\s', v):
+            suffix = re.sub(r'(?i)^fig\.\s+', '', v)
+            variants.add(f'Figure {suffix}')
+            variants.add(f'Fig {suffix}')
+        elif re.match(r'(?i)^fig\s', v) and not re.match(r'(?i)^fig\.', v):
+            suffix = re.sub(r'(?i)^fig\s+', '', v)
+            variants.add(f'Figure {suffix}')
+            variants.add(f'Fig. {suffix}')
+
+    return list(variants)
+
+
+def detect_figure_pages_bulk(pdf_path: str, figure_names: List[str]) -> Dict[str, List[int]]:
+    """Detect candidate pages for multiple figures via a single O(n) text scan.
+
+    Scans all PDF pages once and returns candidate page numbers for each figure,
+    eliminating the need to run AI on every page. Dramatically reduces API calls
+    for batch extraction from O(n×k) to O(n+k).
+
+    Args:
+        pdf_path: Path to PDF file.
+        figure_names: List of figure/table names to locate.
+
+    Returns:
+        Dict mapping figure_name -> list of candidate page numbers (0-indexed).
+        Each list is ordered with the most-likely page (last text occurrence) first,
+        because figure captions typically appear later than in-text cross-references.
+        An empty list means the figure was not detected via text search; the caller
+        should fall back to a full sequential scan.
+    """
+    doc = fitz.open(pdf_path)
+
+    # Build search variants for every requested figure
+    all_variants: Dict[str, List[str]] = {
+        name: build_figure_search_variants(name) for name in figure_names
+    }
+
+    # Collect page numbers where each figure name appears
+    page_hits: Dict[str, List[int]] = {name: [] for name in figure_names}
+
+    for page_num in range(len(doc)):
+        page_text = doc[page_num].get_text()
+        page_text_lower = page_text.lower()
+
+        for figure_name in figure_names:
+            if page_num in page_hits[figure_name]:
+                continue  # Already recorded this page
+            for variant in all_variants[figure_name]:
+                if variant.lower() in page_text_lower:
+                    page_hits[figure_name].append(page_num)
+                    break
+
+    doc.close()
+
+    # Reorder: put last occurrence first (captions come after in-text references)
+    result: Dict[str, List[int]] = {}
+    for name, pages in page_hits.items():
+        if len(pages) > 1:
+            result[name] = list(reversed(pages))
+        else:
+            result[name] = pages
+
+    # Log results for visibility
+    for name, pages in result.items():
+        page_nums = [p + 1 for p in pages]
+        status = f"candidate pages {page_nums}" if page_nums else "not detected (will full-scan)"
+        print(f"  [text-detect] '{name}': {status}")
+
+    return result
 
 
 # ============== Prompt Building ==============
@@ -599,37 +699,54 @@ def search_figure_in_pdf(
     include_extras: bool = True,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     start_page: int = 0,
-    max_pages: Optional[int] = None
+    max_pages: Optional[int] = None,
+    page_candidates: Optional[List[int]] = None
 ) -> Optional[Tuple[int, List[float], Image.Image, int]]:
-    """Search for a figure/table in PDF and return (page_num, bbox, image, quality_score)"""
+    """Search for a figure/table in PDF and return (page_num, bbox, image, quality_score).
+
+    Args:
+        page_candidates: Pre-detected candidate page numbers from text search.
+            When provided, these pages are tried first (O(1) AI calls for the common
+            case), with remaining pages used as fallback if needed.
+    """
     page_count = get_pdf_page_count(pdf_path)
     is_sub = is_subfigure(figure_name)
-    
+
     if max_pages is None:
         max_pages = page_count
-    
+
     end_page = min(start_page + max_pages, page_count)
-    
-    print(f"Searching for '{figure_name}' in PDF...")
-    print(f"Search range: page {start_page + 1} to {end_page}")
-    print(f"Mode: {'sub-figure' if is_sub else ('complete with extras' if include_extras else 'main content only')}")
-    
-    for page_num in range(start_page, end_page):
-        print(f"  Checking page {page_num + 1}...")
-        
+    valid_range = set(range(start_page, end_page))
+
+    # Build search order: candidate pages first, then remaining pages as fallback
+    if page_candidates:
+        priority_pages = [p for p in page_candidates if p in valid_range]
+        remaining_pages = [p for p in range(start_page, end_page) if p not in set(priority_pages)]
+        pages_to_search = priority_pages + remaining_pages
+        hint = f"priority pages {[p+1 for p in priority_pages]}, fallback to {len(remaining_pages)} others"
+    else:
+        pages_to_search = list(range(start_page, end_page))
+        hint = f"full scan pages {start_page + 1}–{end_page}"
+
+    mode_str = 'sub-figure' if is_sub else ('complete with extras' if include_extras else 'main content only')
+    print(f"Searching for '{figure_name}' [{mode_str}] ({hint})...")
+
+    for page_num in pages_to_search:
+        is_priority = page_candidates is not None and page_num in set(page_candidates)
+        tag = " [candidate]" if is_priority else ""
+        print(f"  Checking page {page_num + 1}{tag}...")
+
         page_image = pdf_page_to_image(pdf_path, page_num, dpi)
-        
-        # Use multi-round assessment extraction
         result = extract_with_refinement(
             page_image, figure_name, is_sub, include_extras, max_rounds
         )
-        
+
         if result:
             bbox, quality_score = result
             print(f"  Found '{figure_name}' on page {page_num + 1}")
             print(f"    Final bbox: {bbox}, quality: {quality_score}/10")
             return (page_num, bbox, page_image, quality_score)
-    
+
     print(f"  Not found: '{figure_name}'")
     return None
 
@@ -644,29 +761,38 @@ def extract_figure(
     include_extras: bool = True,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     start_page: int = 0,
-    max_pages: Optional[int] = None
+    max_pages: Optional[int] = None,
+    page_candidates: Optional[List[int]] = None
 ) -> Optional[str]:
-    """Extract a figure/table from PDF
-    
+    """Extract a figure/table from PDF.
+
     Args:
-        pdf_path: Path to PDF file
-        figure_name: Name of figure/table to extract
-        output_path: Output image path
-        dpi: Rendering resolution
-        include_extras: Include extra elements (caption, legend, notes)
-        max_rounds: Max quality assessment rounds
-        start_page: Starting page number
-        max_pages: Max pages to search
-    
+        pdf_path: Path to PDF file.
+        figure_name: Name of figure/table to extract.
+        output_path: Output image path.
+        dpi: Rendering resolution.
+        include_extras: Include extra elements (caption, legend, notes).
+        max_rounds: Max quality assessment rounds.
+        start_page: Starting page number (0-indexed).
+        max_pages: Max pages to search.
+        page_candidates: Pre-detected candidate pages from text search.
+            If None, a text scan is performed automatically.
+
     Returns:
-        Output file path, or None if failed
+        Output file path, or None if failed.
     """
     if not os.path.exists(pdf_path):
         print(f"Error: PDF file not found: {pdf_path}")
         return None
-    
+
+    # Run text-based page detection if caller didn't pre-compute it
+    if page_candidates is None:
+        print(f"Detecting page for '{figure_name}' via text search...")
+        page_candidates = detect_figure_pages_bulk(pdf_path, [figure_name]).get(figure_name, [])
+
     result = search_figure_in_pdf(
-        pdf_path, figure_name, dpi, include_extras, max_rounds, start_page, max_pages
+        pdf_path, figure_name, dpi, include_extras, max_rounds, start_page, max_pages,
+        page_candidates=page_candidates
     )
     
     if result is None:
@@ -705,39 +831,49 @@ def batch_extract_figures(
     include_extras: bool = True,
     max_rounds: int = DEFAULT_MAX_ROUNDS
 ) -> Dict[str, Optional[str]]:
-    """Batch extract multiple figures/tables"""
+    """Batch extract multiple figures/tables.
+
+    Runs a single O(n) text scan over the PDF to detect candidate pages for ALL
+    figures before starting AI extraction, avoiding the O(n×k) page scanning of
+    the naïve approach.
+    """
     results = {}
-    
+
     if output_dir is None:
         output_dir = str(Path(pdf_path).parent / "extracted_figures")
-    
+
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
     pdf_name = Path(pdf_path).stem
-    
+
+    # --- O(n) pre-scan: detect candidate pages for all figures at once ---
+    print(f"\nDetecting pages via text search (single PDF scan for {len(figure_names)} figures)...")
+    all_candidates = detect_figure_pages_bulk(pdf_path, figure_names)
+
     for i, figure_name in enumerate(figure_names):
         print(f"\n[{i + 1}/{len(figure_names)}] Extracting '{figure_name}'...")
-        
-        safe_name = re.sub(r'[^\w\-_]', '_', figure_name)
-        output_path = str(Path(output_dir) / f"{pdf_name}_{safe_name}.png")
-        
+
+        safe_name = re.sub(r'[^\w\-_\(\)]', '_', figure_name)
+        output_path = str(Path(output_dir) / f"{safe_name}.png")
+
+        candidates = all_candidates.get(figure_name, [])
         result = extract_figure(
-            pdf_path, figure_name, output_path, dpi, include_extras, max_rounds
+            pdf_path, figure_name, output_path, dpi, include_extras, max_rounds,
+            page_candidates=candidates
         )
         results[figure_name] = result
-    
+
     # Summary
     print("\n" + "=" * 50)
     print("Extraction Summary:")
     success_count = sum(1 for v in results.values() if v is not None)
     print(f"  Success: {success_count}/{len(figure_names)}")
-    
+
     if success_count < len(figure_names):
         print("  Failed:")
         for name, path in results.items():
             if path is None:
                 print(f"    - {name}")
-    
+
     return results
 
 

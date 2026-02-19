@@ -48,9 +48,9 @@ Thumbs.db
 *.temp
 *.log
 
-# Output files (keep structure, ignore generated content)
-# Uncomment if you want to ignore output
-# output/*/
+# Output files (ignore all generated content by default)
+output/*/
 
-# Keep example output
+# Keep example output for reference
 !output/2026-02-04_220411/
+!output/2026-02-04_220411/**

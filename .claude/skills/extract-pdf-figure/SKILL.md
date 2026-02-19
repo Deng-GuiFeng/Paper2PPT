@@ -1,13 +1,13 @@
 ---
 name: extract-pdf-figure
-description: Extract figures and tables from academic PDF papers with precise bounding box detection using Qwen3-VL vision model. Supports extracting complete figures (with title, legend, notes) or main content only. Can extract sub-figures like Figure 1(a). Use when user asks to extract, crop, or get figures/tables from PDF papers.
+description: Extract figures and tables from academic PDF papers with precise bounding box detection using Qwen3.5-plus vision model. Supports extracting complete figures (with title, legend, notes) or main content only. Can extract sub-figures like Figure 1(a). Use when user asks to extract, crop, or get figures/tables from PDF papers.
 argument-hint: <pdf_path> <figure_name> [--no-extras]
 allowed-tools: Bash(python *), Bash(conda *)
 ---
 
 # PDF Figure & Table Extraction Skill
 
-Extract figures and tables from academic PDF papers with pixel-perfect precision using the Qwen3-VL vision-language model. Features multi-round quality assessment for optimal extraction accuracy.
+Extract figures and tables from academic PDF papers with pixel-perfect precision using the Qwen3.5-plus vision-language model. Features fast text-based page detection (O(n) scan) followed by AI-powered multi-round quality assessment, dramatically reducing API calls compared to brute-force page scanning.
 
 ## Quick Start
 
@@ -116,11 +116,14 @@ python .claude/skills/extract-pdf-figure/scripts/extract_figures.py "PDFs/paper.
 
 ## How It Works
 
-1. **PDF to Image**: Each PDF page is rendered at high resolution (300 DPI default)
-2. **AI Detection**: Qwen3-VL model locates the target figure and returns bounding box coordinates
-3. **Quality Check**: The extraction is visually assessed; if needed, coordinates are refined
-4. **Precise Cropping**: The image is cropped with minimal padding to capture the exact figure
-5. **Output**: Saved as an optimized PNG file
+1. **Text-Based Page Detection (O(n))**: PyMuPDF scans all PDF pages once to locate candidate pages for each figure via text search — no API calls needed for this step.
+2. **Targeted Rendering**: Only the candidate pages are rendered at high resolution (300 DPI default), skipping the rest.
+3. **AI Detection**: Qwen3.5-plus model locates the target figure on the candidate page and returns bounding box coordinates.
+4. **Quality Check**: The extraction is visually assessed with a red bounding box overlay; if needed, coordinates are refined iteratively.
+5. **Precise Cropping**: The image is cropped with minimal padding to capture the exact figure.
+6. **Output**: Saved as an optimized PNG file.
+
+**Performance**: Single extraction — O(n) text scan + O(rounds) API calls. Batch extraction — O(n) text scan once + O(k×rounds) API calls, instead of the naïve O(n×k×rounds).
 
 ## Tips for Best Results
 
