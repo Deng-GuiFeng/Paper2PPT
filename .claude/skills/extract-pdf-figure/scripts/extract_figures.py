@@ -485,8 +485,10 @@ def call_qwen_vl(
             response_text = response_text.split("```")[1].split("```")[0].strip()
         
         result = json.loads(response_text)
+        if isinstance(result, list):
+            result = result[0] if result else None
         return result
-        
+
     except json.JSONDecodeError as e:
         print(f"  JSON parse error: {e}")
         return None

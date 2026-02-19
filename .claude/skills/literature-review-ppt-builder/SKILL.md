@@ -30,7 +30,8 @@ python .claude/skills/extract-pdf-figure/scripts/extract_figures.py "PDFs/paper.
 ### 2. 生成 PPT
 
 ```bash
-python .claude/skills/literature-review-ppt-builder/scripts/build_ppt.py \
+PYTHONIOENCODING=utf-8 conda run -n paper2ppt python \
+    ".claude/skills/literature-review-ppt-builder/scripts/build_ppt.py" \
     "$outputDir/ppt_content.md" \
     "$outputDir/asset/" \
     ".claude/skills/literature-review-ppt-builder/templates/Template.pptx" \

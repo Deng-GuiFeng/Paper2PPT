@@ -7,7 +7,7 @@ model: inherit
 
 # Paper2PPT Agent
 
-将学术论文 PDF 自动转换为组会汇报 PPT（2-3页，适合5分钟快速分享）。
+将学术论文 PDF 自动转换为组会汇报 PPT（2页，适合5分钟快速分享）。
 
 ## 环境
 
@@ -17,8 +17,10 @@ model: inherit
 
 ### 第一步：创建输出目录
 
+用 Python 生成时间戳（比 bash `date` 更稳定，避免 TZ 环境变量异常导致时间错误）：
+
 ```bash
-outputDir="output/$(date +%Y-%m-%d_%H%M%S)"
+outputDir="output/$(conda run -n paper2ppt python -c 'from datetime import datetime; print(datetime.now().strftime("%Y-%m-%d_%H%M%S"))')"
 mkdir -p "$outputDir/asset"
 ```
 
@@ -28,7 +30,7 @@ mkdir -p "$outputDir/asset"
 
 **`paper_summary.md`** — 详尽的中文论文总结（5000字以上），供汇报者参考。
 
-**`ppt_content.md`** — 严格2页（极少数3页）的结构化PPT内容，格式如下：
+**`ppt_content.md`** — **严格2页**的结构化PPT内容，格式如下：
 
 ```markdown
 # [论文完整标题]
@@ -78,11 +80,20 @@ mkdir -p "$outputDir/asset"
 
 **内容要求**：
 - 幻灯片内容全英文，讲稿中文
-- 大纲符号：一级 `▶`，二级 `▢`，三级 `•`（dash）
+- 大纲符号：一级 `▶`，二级 `▢`，三级 `-`（dash）
 - 跨页连续编号，不重置
 - 逻辑流程选择：`Background→Method→Results→Conclusion` 或 `Problem→Framework→Innovations→Results` 等
 - 图表引用格式：`Figure N`、`Table N`、`Figure N(a)` 等，名称与论文原文一致
 - `[content-only]` 标记：PPT讲稿会详细解释时使用，否则用完整模式
+
+**行数硬性限制**（防止内容溢出幻灯片边界）：
+
+| 幻灯片 | `▶`+`▢`+`-` 总行数 |
+|--------|-------------------|
+| Slide 1 | **15 ~ 18 行** |
+| Slide 2 | **17 ~ 21 行** |
+
+- 草稿完成后**必须自行统计行数**，超出上限则优先删减低价值 `-` 行再保存
 
 将生成的内容保存到：
 - `$outputDir/paper_summary.md`
@@ -119,7 +130,7 @@ conda run -n paper2ppt python "$EXTRACTOR" "<pdf_path>" "Figure 2" \
 ### 第四步：生成 PPTX（literature-review-ppt-builder skill）
 
 ```bash
-conda run -n paper2ppt python \
+PYTHONIOENCODING=utf-8 conda run -n paper2ppt python \
     ".claude/skills/literature-review-ppt-builder/scripts/build_ppt.py" \
     "$outputDir/ppt_content.md" \
     "$outputDir/asset/" \
