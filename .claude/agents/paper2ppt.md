@@ -20,7 +20,7 @@ model: inherit
 用 Python 生成时间戳（比 bash `date` 更稳定，避免 TZ 环境变量异常导致时间错误）：
 
 ```bash
-outputDir="output/$(conda run -n paper2ppt python -c 'from datetime import datetime; print(datetime.now().strftime("%Y-%m-%d_%H%M%S"))')"
+outputDir="output/$(conda run -n paper2ppt python -c 'from datetime import datetime; print(datetime.now().strftime("%Y-%m-%d_%H%M%S"))' | tr -d '\r')"
 mkdir -p "$outputDir/asset"
 ```
 
