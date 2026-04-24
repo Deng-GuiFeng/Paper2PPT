@@ -1,6 +1,6 @@
 ---
 name: paper2ppt
-description: Convert an academic PDF paper into a professional 5-minute presentation (PPTX). Trigger when the user wants to generate a PPT/PPTX/slides from an academic paper PDF — e.g. "阅读论文 X 并生成PPT", "为这篇论文做组会汇报", "make a presentation from this paper", "read paper and generate slides". Runs the full pipeline automatically: paper analysis → structured PPT content → figure extraction → PPTX generation.
+description: 'Convert an academic PDF paper into a professional 5-minute presentation (PPTX). Trigger when the user wants to generate a PPT/PPTX/slides from an academic paper PDF — e.g. "阅读论文 X 并生成PPT", "为这篇论文做组会汇报", "make a presentation from this paper", "read paper and generate slides". Runs the full pipeline automatically, going through paper analysis, structured PPT content, figure extraction, and PPTX generation.'
 tools: Bash, Read, Glob, Grep, Write, Edit
 model: inherit
 ---
