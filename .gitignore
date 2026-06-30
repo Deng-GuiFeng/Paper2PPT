@@ -54,3 +54,7 @@ output/*/
 # Keep example output for reference
 !output/2026-02-04_220411/
 !output/2026-02-04_220411/**
+
+# PDF inputs (ignore all, keep one as example)
+PDFs/*.pdf
+!PDFs/DeepSeek-OCR 2 Visual Causal Flow.pdf
