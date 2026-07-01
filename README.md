@@ -58,8 +58,7 @@ paper-to-slides/          技能本体
   references/             供助手参考的详细规则
   scripts/                技能调用的脚本
   assets/Template.pptx    幻灯片模板
-PDFs/                     示例输入 PDF
-output/                   示例输出，可看到成品的样子
+example/                  一份完整示例：论文 PDF 及其生成的幻灯片、总结和图表
 ```
 
 ## 许可
