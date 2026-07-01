@@ -1,8 +1,5 @@
-# Environment variables (contains API keys)
+# Local environment / secrets (never commit)
 .env
-
-# User private files
-PROMPT.md
 
 # Python
 __pycache__/

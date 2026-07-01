@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Literature Review PPT Builder
+build_ppt.py  —  build a .pptx from ppt_content.md using a template.
 
 将 ppt_content.md 转换为 .pptx 演示文稿，使用指定模板。
 
@@ -244,7 +244,7 @@ def parse_figure_line(text: str, slide: SlideContent):
 def find_figure_file(figures_dir: str, figure_name: str) -> Optional[str]:
     """查找图片文件
     
-    支持多种命名格式以兼容 extract-pdf-figure 的输出：
+    支持多种命名格式：
     - Figure_1.png (空格转下划线)
     - <pdf_name>_Figure_1.png (带 PDF 名称前缀)
     - figure_1.png (小写)
